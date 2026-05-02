@@ -7,9 +7,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace LibraryApi.Web.Controllers;
 
+// Path conventions (`/books` for the collection, `/book` and `/book/{id}` for
+// individual operations) mirror the contract published at /openapi/v1.yaml,
+// which itself follows the structure of https://libapi.1breadcrumb.com/.
 [ApiController]
 [Authorize]
-[Route("api/books")]
+[Route("api")]
+[Produces("application/json")]
 public class BooksController : ControllerBase
 {
     private readonly IBookService _books;
@@ -21,8 +25,8 @@ public class BooksController : ControllerBase
         _currentUser = currentUser;
     }
 
-    [HttpGet]
-    public async Task<ActionResult<PagedResult<BookDto>>> Search(
+    [HttpGet("books")]
+    public async Task<ActionResult<PagedResult<BookDto>>> GetBooks(
         [FromQuery] string? search,
         [FromQuery] AvailabilityFilter availability = AvailabilityFilter.All,
         [FromQuery] int page = 1,
@@ -30,33 +34,33 @@ public class BooksController : ControllerBase
         CancellationToken ct = default)
         => Ok(await _books.SearchAsync(search, availability, page, pageSize, ct));
 
-    [HttpGet("{id:guid}")]
-    public async Task<ActionResult<BookDto>> GetById(Guid id, CancellationToken ct)
+    [HttpGet("book/{id:guid}", Name = nameof(GetBook))]
+    public async Task<ActionResult<BookDto>> GetBook(Guid id, CancellationToken ct)
         => Ok(await _books.GetAsync(id, ct));
 
-    [HttpPost]
-    public async Task<ActionResult<BookDto>> Create([FromBody] CreateBookDto dto, CancellationToken ct)
+    [HttpPost("book")]
+    public async Task<ActionResult<BookDto>> PostBook([FromBody] CreateBookDto dto, CancellationToken ct)
     {
         var created = await _books.CreateAsync(_currentUser.Id, dto, ct);
-        return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+        return CreatedAtRoute(nameof(GetBook), new { id = created.Id }, created);
     }
 
-    [HttpPut("{id:guid}")]
-    public async Task<ActionResult<BookDto>> Update(Guid id, [FromBody] UpdateBookDto dto, CancellationToken ct)
+    [HttpPut("book/{id:guid}")]
+    public async Task<ActionResult<BookDto>> PutBook(Guid id, [FromBody] UpdateBookDto dto, CancellationToken ct)
         => Ok(await _books.UpdateAsync(id, _currentUser.Id, dto, ct));
 
-    [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    [HttpDelete("book/{id:guid}")]
+    public async Task<IActionResult> DeleteBook(Guid id, CancellationToken ct)
     {
         await _books.DeleteAsync(id, _currentUser.Id, ct);
         return NoContent();
     }
 
-    [HttpPost("{id:guid}/borrow")]
-    public async Task<ActionResult<BookDto>> Borrow(Guid id, CancellationToken ct)
+    [HttpPost("book/{id:guid}/borrow")]
+    public async Task<ActionResult<BookDto>> BorrowBook(Guid id, CancellationToken ct)
         => Ok(await _books.BorrowAsync(id, _currentUser.Id, ct));
 
-    [HttpPost("{id:guid}/return")]
-    public async Task<ActionResult<BookDto>> Return(Guid id, CancellationToken ct)
+    [HttpPost("book/{id:guid}/return")]
+    public async Task<ActionResult<BookDto>> ReturnBook(Guid id, CancellationToken ct)
         => Ok(await _books.ReturnAsync(id, _currentUser.Id, ct));
 }
