@@ -140,7 +140,7 @@ export function LibraryPage() {
     <div className="library-page">
       <header className="page-header">
         <div>
-          <h1>Library</h1>
+          <h1>1Breadcrumb Library</h1>
           <p className="muted">Crumb-to-Crumb book lending</p>
         </div>
         <div className="user-info">
