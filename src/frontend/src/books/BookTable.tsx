@@ -57,6 +57,15 @@ export function BookTable({
                 <button
                   type="button"
                   className="icon-button"
+                  aria-label={
+                    book.isAvailable
+                      ? isOwner
+                        ? "You can't borrow your own book"
+                        : 'Borrow'
+                      : canReturn
+                      ? 'Return'
+                      : 'Borrowed by someone else'
+                  }
                   title={
                     book.isAvailable
                       ? isOwner
@@ -77,6 +86,7 @@ export function BookTable({
                 <button
                   type="button"
                   className="icon-button"
+                  aria-label={isOwner ? 'Edit' : 'Only the owner can edit'}
                   title={isOwner ? 'Edit' : 'Only the owner can edit'}
                   disabled={!isOwner || isMutating}
                   onClick={() => onEdit(book)}
@@ -86,6 +96,7 @@ export function BookTable({
                 <button
                   type="button"
                   className="icon-button danger"
+                  aria-label={isOwner ? 'Delete' : 'Only the owner can delete'}
                   title={isOwner ? 'Delete' : 'Only the owner can delete'}
                   disabled={!isOwner || isMutating}
                   onClick={() => onDelete(book)}

@@ -210,14 +210,54 @@ Migrations are applied at startup with retry — the backend container waits for
 
 ## Testing
 
-`LibraryApi.Tests` covers the parts where bugs would actually hurt:
+### Backend (xUnit)
 
-- `BookServiceTests` — borrow / return state machine, ownership-based authorization (`UpdateAsync`, `DeleteAsync` reject non-owners), search pass-through.
-- `AuthServiceTests` — registration normalization, conflict on duplicate email, login success / wrong password / unknown email.
+```bash
+cd src/backend
+dotnet test LibraryApi.Tests
+```
 
-The repositories are intentionally not unit-tested — they are thin EF Core wrappers, and tests against an in-memory provider would verify the test double rather than the real Postgres behavior. Integration tests with Testcontainers are the right next step, but were out of scope for this MVP.
+Covers `BookService` (borrow / return state machine, ownership rules, activity logging), `AuthService` (registration / login flows), and `AdminService` (activity-log mapping).
 
-I did not write component tests on the frontend; given the time box I prioritized covering critical backend logic. The components are split small enough to test in isolation later (e.g. `BookTable` is a pure render given props).
+### Frontend UI tests (Playwright, mocked network)
+
+Fast, isolated, run against `npm run dev`. The backend is mocked via `page.route()` — no docker, no Postgres needed.
+
+```bash
+cd src/frontend
+npm install
+npx playwright install --with-deps chromium    # one-time
+npm run test:ui
+```
+
+Covers the login page (form behavior, validation, success/error flows), the library page (rendering, search, borrow, owner-only edit/delete, admin-link visibility, add-book modal), and the admin page (table render, role gating, redirect behavior).
+
+### Frontend E2E tests (Playwright, full stack)
+
+Run against the actual docker-compose stack — real backend, real Postgres, seeded users.
+
+```bash
+docker compose up -d --build
+cd src/frontend
+npm run test:e2e
+docker compose down -v
+```
+
+Covers seeded login, registration → first book flow, full book lifecycle (add / edit / delete), borrow + return between users, admin activity log assertions, and role gating on `/admin/activity`.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every PR against `main` and on every push to `main`:
+
+| Job        | What it does                                                                  |
+| ---------- | ----------------------------------------------------------------------------- |
+| `backend`  | `dotnet restore`, `build -c Release`, `dotnet test` against the unit suite.   |
+| `frontend` | `npm install`, `npm run build`, `npm run test:ui` (Playwright UI tests).      |
+| `e2e`      | Builds the docker stack, waits for `/health`, runs `npm run test:e2e`. Depends on `backend` and `frontend` passing. |
+
+Playwright HTML reports and compose logs are uploaded as artifacts on every run.
+
+The `main` branch is protected to require the `e2e` job to pass before merge — you cannot push to `main` or merge a PR that breaks the end-to-end suite.
 
 ---
 
