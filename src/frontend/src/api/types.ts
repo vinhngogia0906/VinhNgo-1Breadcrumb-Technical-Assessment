@@ -1,7 +1,10 @@
+export type UserRole = 'User' | 'Admin';
+
 export type AuthUser = {
   id: string;
   email: string;
   displayName: string;
+  role: UserRole;
 };
 
 export type AuthResponse = {
@@ -34,4 +37,22 @@ export type AvailabilityFilter = 'All' | 'Available' | 'Unavailable';
 
 export type ApiError = {
   error: string;
+};
+
+export type BookAction =
+  | 'Created'
+  | 'Updated'
+  | 'Deleted'
+  | 'Borrowed'
+  | 'Returned';
+
+export type BookActivity = {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  actorId: string;
+  actorName: string;
+  action: BookAction;
+  details: string | null;
+  occurredAt: string;
 };

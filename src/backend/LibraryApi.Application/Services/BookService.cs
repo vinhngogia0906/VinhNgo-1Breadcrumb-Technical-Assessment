@@ -11,11 +11,13 @@ public class BookService : IBookService
 {
     private readonly IBookRepository _books;
     private readonly IUserRepository _users;
+    private readonly IBookActivityRepository _activity;
 
-    public BookService(IBookRepository books, IUserRepository users)
+    public BookService(IBookRepository books, IUserRepository users, IBookActivityRepository activity)
     {
         _books = books;
         _users = users;
+        _activity = activity;
     }
 
     public async Task<PagedResult<BookDto>> SearchAsync(
@@ -49,6 +51,7 @@ public class BookService : IBookService
         };
 
         await _books.AddAsync(book, ct);
+        await RecordAsync(book, owner, BookAction.Created, details: null, ct);
         await _books.SaveChangesAsync(ct);
 
         return book.ToDto();
@@ -62,10 +65,20 @@ public class BookService : IBookService
         if (book.OwnerId != currentUserId)
             throw new ForbiddenException("Only the owner can update this book.");
 
-        book.Title = dto.Title.Trim();
+        var actor = await RequireUserAsync(currentUserId, ct);
+        var previousTitle = book.Title;
+        var newTitle = dto.Title.Trim();
+
+        book.Title = newTitle;
         book.UpdatedAt = DateTime.UtcNow;
 
         _books.Update(book);
+        await RecordAsync(
+            book,
+            actor,
+            BookAction.Updated,
+            details: previousTitle == newTitle ? null : $"Title: \"{previousTitle}\" → \"{newTitle}\"",
+            ct);
         await _books.SaveChangesAsync(ct);
 
         return book.ToDto();
@@ -78,6 +91,11 @@ public class BookService : IBookService
 
         if (book.OwnerId != currentUserId)
             throw new ForbiddenException("Only the owner can delete this book.");
+
+        var actor = await RequireUserAsync(currentUserId, ct);
+
+        // Record before remove so we still snapshot the title.
+        await RecordAsync(book, actor, BookAction.Deleted, details: null, ct);
 
         _books.Remove(book);
         await _books.SaveChangesAsync(ct);
@@ -94,14 +112,14 @@ public class BookService : IBookService
         if (book.OwnerId == currentUserId)
             throw new ConflictException("You cannot borrow your own book.");
 
-        var borrower = await _users.GetByIdAsync(currentUserId, ct)
-            ?? throw new NotFoundException(nameof(User), currentUserId);
+        var borrower = await RequireUserAsync(currentUserId, ct);
 
         book.BorrowerId = borrower.Id;
         book.Borrower = borrower;
         book.UpdatedAt = DateTime.UtcNow;
 
         _books.Update(book);
+        await RecordAsync(book, borrower, BookAction.Borrowed, details: null, ct);
         await _books.SaveChangesAsync(ct);
 
         return book.ToDto();
@@ -119,13 +137,38 @@ public class BookService : IBookService
         if (book.BorrowerId != currentUserId && book.OwnerId != currentUserId)
             throw new ForbiddenException("Only the borrower or the owner can return this book.");
 
+        var actor = await RequireUserAsync(currentUserId, ct);
+        var previousBorrowerName = book.Borrower?.DisplayName;
+
         book.BorrowerId = null;
         book.Borrower = null;
         book.UpdatedAt = DateTime.UtcNow;
 
         _books.Update(book);
+        await RecordAsync(
+            book,
+            actor,
+            BookAction.Returned,
+            details: previousBorrowerName is null ? null : $"Returned from {previousBorrowerName}",
+            ct);
         await _books.SaveChangesAsync(ct);
 
         return book.ToDto();
     }
+
+    private async Task<User> RequireUserAsync(Guid id, CancellationToken ct) =>
+        await _users.GetByIdAsync(id, ct)
+            ?? throw new NotFoundException(nameof(User), id);
+
+    private Task RecordAsync(Book book, User actor, BookAction action, string? details, CancellationToken ct) =>
+        _activity.AddAsync(new BookActivity
+        {
+            BookId = book.Id,
+            BookTitle = book.Title,
+            ActorId = actor.Id,
+            ActorName = actor.DisplayName,
+            Action = action,
+            Details = details,
+            OccurredAt = DateTime.UtcNow
+        }, ct);
 }

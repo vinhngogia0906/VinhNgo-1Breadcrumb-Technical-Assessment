@@ -36,7 +36,7 @@ export function LoginPage() {
   return (
     <div className="auth-page">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Library</h1>
+        <h1>1Breadcrumb Library</h1>
         <p className="muted">{mode === 'login' ? 'Sign in to continue' : 'Create your account'}</p>
 
         <label>

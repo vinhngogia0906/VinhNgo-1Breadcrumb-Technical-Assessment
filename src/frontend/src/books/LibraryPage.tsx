@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { booksApi } from '../api/books';
 import { readErrorMessage } from '../api/client';
 import type { AvailabilityFilter, Book, PagedResult } from '../api/types';
@@ -143,7 +144,10 @@ export function LibraryPage() {
           <p className="muted">Crumb-to-Crumb book lending</p>
         </div>
         <div className="user-info">
-          <span>{user?.displayName}</span>
+          {user?.role === 'Admin' && (
+            <Link to="/admin/activity" className="header-link">Activity log</Link>
+          )}
+          <span>{user?.displayName}{user?.role === 'Admin' ? ' (admin)' : ''}</span>
           <button type="button" onClick={logout}>Sign out</button>
         </div>
       </header>

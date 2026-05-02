@@ -11,7 +11,15 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services
+    .AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Serialize enums as their string names so the wire format matches the
+        // OpenAPI contract (e.g. "Borrowed" instead of 3).
+        options.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 builder.Services.AddOpenApi();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
@@ -61,6 +69,7 @@ var app = builder.Build();
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<LibraryDbContext>();
+    var seeder = scope.ServiceProvider.GetRequiredService<IDataSeeder>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     var maxAttempts = 10;
     for (var attempt = 1; attempt <= maxAttempts; attempt++)
@@ -68,6 +77,7 @@ await using (var scope = app.Services.CreateAsyncScope())
         try
         {
             await db.Database.MigrateAsync();
+            await seeder.SeedAsync();
             break;
         }
         catch (Exception ex) when (attempt < maxAttempts)

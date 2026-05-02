@@ -13,6 +13,8 @@ public class BookServiceTests
 {
     private readonly Mock<IBookRepository> _bookRepo = new();
     private readonly Mock<IUserRepository> _userRepo = new();
+    private readonly Mock<IBookActivityRepository> _activityRepo = new();
+    private readonly List<BookActivity> _recordedActivity = new();
     private readonly BookService _sut;
 
     private readonly User _owner = new() { Id = Guid.NewGuid(), Email = "owner@test", DisplayName = "Owner" };
@@ -20,7 +22,12 @@ public class BookServiceTests
 
     public BookServiceTests()
     {
-        _sut = new BookService(_bookRepo.Object, _userRepo.Object);
+        _activityRepo
+            .Setup(r => r.AddAsync(It.IsAny<BookActivity>(), It.IsAny<CancellationToken>()))
+            .Callback<BookActivity, CancellationToken>((a, _) => _recordedActivity.Add(a))
+            .Returns(Task.CompletedTask);
+
+        _sut = new BookService(_bookRepo.Object, _userRepo.Object, _activityRepo.Object);
     }
 
     [Fact]
@@ -106,6 +113,8 @@ public class BookServiceTests
         book.Borrower = _other;
         _bookRepo.Setup(r => r.GetByIdAsync(book.Id, It.IsAny<CancellationToken>()))
             .ReturnsAsync(book);
+        _userRepo.Setup(r => r.GetByIdAsync(_other.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_other);
 
         var dto = await _sut.ReturnAsync(book.Id, _other.Id);
 
@@ -150,6 +159,73 @@ public class BookServiceTests
 
         result.TotalCount.Should().Be(7);
         result.Items.Should().ContainSingle().Which.OwnerName.Should().Be(_owner.DisplayName);
+    }
+
+    [Fact]
+    public async Task CreateAsync_records_Created_activity()
+    {
+        _userRepo.Setup(r => r.GetByIdAsync(_owner.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_owner);
+
+        await _sut.CreateAsync(_owner.Id, new CreateBookDto { Title = "Refactoring" });
+
+        _recordedActivity.Should().ContainSingle()
+            .Which.Should().BeEquivalentTo(new
+            {
+                BookTitle = "Refactoring",
+                ActorId = _owner.Id,
+                ActorName = _owner.DisplayName,
+                Action = BookAction.Created
+            }, opts => opts.ExcludingMissingMembers());
+    }
+
+    [Fact]
+    public async Task BorrowAsync_records_Borrowed_activity_with_borrower_as_actor()
+    {
+        var book = MakeBook(_owner);
+        _bookRepo.Setup(r => r.GetByIdAsync(book.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(book);
+        _userRepo.Setup(r => r.GetByIdAsync(_other.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_other);
+
+        await _sut.BorrowAsync(book.Id, _other.Id);
+
+        _recordedActivity.Should().ContainSingle()
+            .Which.Action.Should().Be(BookAction.Borrowed);
+        _recordedActivity[0].ActorId.Should().Be(_other.Id);
+        _recordedActivity[0].BookTitle.Should().Be(book.Title);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_records_Updated_activity_with_title_diff()
+    {
+        var book = MakeBook(_owner);
+        _bookRepo.Setup(r => r.GetByIdAsync(book.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(book);
+        _userRepo.Setup(r => r.GetByIdAsync(_owner.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_owner);
+
+        await _sut.UpdateAsync(book.Id, _owner.Id, new UpdateBookDto { Title = "New Title" });
+
+        var entry = _recordedActivity.Should().ContainSingle().Subject;
+        entry.Action.Should().Be(BookAction.Updated);
+        entry.Details.Should().Contain("Title").And.Contain("New Title");
+    }
+
+    [Fact]
+    public async Task DeleteAsync_records_Deleted_activity_before_remove()
+    {
+        var book = MakeBook(_owner);
+        _bookRepo.Setup(r => r.GetByIdAsync(book.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(book);
+        _userRepo.Setup(r => r.GetByIdAsync(_owner.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(_owner);
+
+        await _sut.DeleteAsync(book.Id, _owner.Id);
+
+        _recordedActivity.Should().ContainSingle()
+            .Which.Action.Should().Be(BookAction.Deleted);
+        _bookRepo.Verify(r => r.Remove(It.IsAny<Book>()), Times.Once);
     }
 
     private static Book MakeBook(User owner) => new()

@@ -23,6 +23,6 @@ public class LoginDto
     public string Password { get; set; } = string.Empty;
 }
 
-public record AuthUserDto(Guid Id, string Email, string DisplayName);
+public record AuthUserDto(Guid Id, string Email, string DisplayName, string Role);
 
 public record AuthResponseDto(string Token, DateTime ExpiresAt, AuthUserDto User);

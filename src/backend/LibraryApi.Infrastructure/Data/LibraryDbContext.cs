@@ -9,6 +9,7 @@ public class LibraryDbContext : DbContext
 
     public DbSet<Book> Books => Set<Book>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<BookActivity> BookActivities => Set<BookActivity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,6 +21,7 @@ public class LibraryDbContext : DbContext
             b.HasIndex(u => u.Email).IsUnique();
             b.Property(u => u.DisplayName).IsRequired().HasMaxLength(100);
             b.Property(u => u.PasswordHash).IsRequired();
+            b.Property(u => u.Role).IsRequired().HasMaxLength(20).HasDefaultValue("User");
             b.Property(u => u.CreatedAt).HasColumnType("timestamp with time zone");
         });
 
@@ -44,6 +46,23 @@ public class LibraryDbContext : DbContext
 
             b.HasIndex(x => x.Title);
             b.HasIndex(x => x.BorrowerId);
+        });
+
+        modelBuilder.Entity<BookActivity>(b =>
+        {
+            b.ToTable("book_activities");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.BookTitle).IsRequired().HasMaxLength(200);
+            b.Property(x => x.ActorName).IsRequired().HasMaxLength(100);
+            b.Property(x => x.Details).HasMaxLength(500);
+            b.Property(x => x.Action)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+            b.Property(x => x.OccurredAt).HasColumnType("timestamp with time zone");
+            b.HasIndex(x => x.OccurredAt);
+            b.HasIndex(x => x.BookId);
+            b.HasIndex(x => x.ActorId);
         });
     }
 }
