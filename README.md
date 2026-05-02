@@ -1,5 +1,9 @@
 # 1Breadcrumb Library — Technical Assessment
 
+Welcome to my attempt at 1Breadcrumb Technical Assessment.
+
+This project was written by [Vinh Ngo](https://github.com/vinhngogia0906) with the help of Claude Code
+
 Crumb-to-Crumb book lending library: a small full-stack app where Crumbs can register, list books they own, and borrow / return books from each other.
 
 - **Backend:** ASP.NET Core 10 Web API (C#), EF Core 10 + PostgreSQL, JWT bearer auth
