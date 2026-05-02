@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel in-progress runs of this workflow on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (build + xUnit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('src/backend/**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Restore
+        working-directory: src/backend
+        run: dotnet restore LibraryApi.slnx
+
+      - name: Build
+        working-directory: src/backend
+        run: dotnet build LibraryApi.slnx --no-restore -c Release
+
+      - name: Test
+        working-directory: src/backend
+        run: dotnet test LibraryApi.Tests --no-build -c Release --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-results
+          path: src/backend/LibraryApi.Tests/TestResults/
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (build + UI tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install
+        working-directory: src/frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Build (tsc + vite)
+        working-directory: src/frontend
+        run: npm run build
+
+      - name: Install Playwright (chromium)
+        working-directory: src/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: UI tests (mocked network)
+        working-directory: src/frontend
+        run: npm run test:ui
+
+      - name: Upload UI test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-playwright-report
+          path: src/frontend/playwright-report-ui/
+          if-no-files-found: ignore
+
+  e2e:
+    name: E2E (full docker stack)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Build & start stack
+        run: docker compose up -d --build
+
+      - name: Wait for backend to become healthy
+        run: |
+          for i in {1..40}; do
+            if curl -fs http://localhost:5000/health > /dev/null; then
+              echo "backend healthy"
+              exit 0
+            fi
+            echo "waiting for backend... ($i)"
+            sleep 3
+          done
+          echo "backend failed to start"
+          docker compose logs --no-color
+          exit 1
+
+      - name: Wait for frontend
+        run: |
+          for i in {1..20}; do
+            if curl -fs http://localhost:8080/ > /dev/null; then
+              echo "frontend serving"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "frontend failed to start"
+          exit 1
+
+      - name: Install frontend deps
+        working-directory: src/frontend
+        run: npm install --no-audit --no-fund
+
+      - name: Install Playwright (chromium)
+        working-directory: src/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        working-directory: src/frontend
+        env:
+          E2E_BASE_URL: http://localhost:8080
+          CI: 'true'
+        run: npm run test:e2e
+
+      - name: Capture compose logs
+        if: always()
+        run: docker compose logs --no-color > compose.log || true
+
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright-report
+          path: |
+            src/frontend/playwright-report-e2e/
+            src/frontend/test-results/
+            compose.log
+          if-no-files-found: ignore
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

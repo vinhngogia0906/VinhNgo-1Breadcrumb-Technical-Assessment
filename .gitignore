@@ -15,6 +15,11 @@ dist/
 .vite/
 *.local
 
+# Playwright
+playwright-report*/
+test-results/
+playwright/.cache/
+
 # Editor/tooling
 .claude/
 .vscode/
