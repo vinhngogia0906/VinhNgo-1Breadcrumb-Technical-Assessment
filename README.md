@@ -1,5 +1,9 @@
 # 1Breadcrumb Library — Technical Assessment
 
+Welcome to my attempt at 1Breadcrumb Technical Assessment.
+
+This project was written by [Vinh Ngo](https://github.com/vinhngogia0906) with the help of Claude Code
+
 Crumb-to-Crumb book lending library: a small full-stack app where Crumbs can register, list books they own, and borrow / return books from each other.
 
 - **Backend:** ASP.NET Core 10 Web API (C#), EF Core 10 + PostgreSQL, JWT bearer auth
@@ -107,22 +111,155 @@ Vite dev server runs on `http://localhost:5173` and proxies `/api/*` to the back
 
 ---
 
-## Using the app
+## Database seed (automatic — no SQL to run)
 
-On first boot the API seeds two accounts (idempotent — run again, no duplicates):
+On first boot the backend container does **everything you need** before the app is usable:
 
-| Email             | Password       | Role  | Notes                                              |
-| ----------------- | -------------- | ----- | -------------------------------------------------- |
-| `admin@bread.com` | `AdminPass123` | Admin | Sees the global activity log at `/admin/activity`. |
-| `test@bread.com`  | `TestPass123`  | User  | Owns three demo books out of the box.              |
+1. Applies all EF Core migrations against the (empty) Postgres volume.
+2. Runs `DataSeeder` (`src/backend/LibraryApi.Infrastructure/Data/DataSeeder.cs`), which idempotently inserts:
 
-You can also register fresh accounts at `/login` — toggle to "Register".
+   | What | Detail |
+   | ---- | ------ |
+   | Admin account | `admin@bread.com` / `AdminPass123` — role `Admin` |
+   | Test account  | `test@bread.com`  / `TestPass123`  — role `User`  |
+   | Demo books    | *The Pragmatic Programmer*, *Clean Code*, *Designing Data-Intensive Applications* — all owned by the test account |
 
-1. Sign in. Regular users land on `/library`; admins land there too and see an extra **Activity log** link in the header.
-2. Add a book via the floating **+ Add Book** button. The authenticated user becomes the owner.
-3. Other users can search, filter (Available / Unavailable), and borrow your books.
-4. The borrower (or the owner) can return the book; only the owner can edit or delete.
-5. Admins can review every create / update / delete / borrow / return event at `/admin/activity`.
+The seeder is keyed on the email address, so re-running `docker compose up` is safe and never creates duplicates.
+
+You should see these lines in the backend container logs on first boot (run `docker compose logs backend | grep -i seed` if you missed them):
+
+```
+info: LibraryApi.Infrastructure.Data.DataSeeder[0]
+      Seeded Admin account: admin@bread.com
+info: LibraryApi.Infrastructure.Data.DataSeeder[0]
+      Seeded User account: test@bread.com
+info: LibraryApi.Infrastructure.Data.DataSeeder[0]
+      Seeded 3 demo books owned by test@bread.com.
+```
+
+<!-- Screenshot: terminal showing the three "Seeded..." log lines from `docker compose up` -->
+![Backend seed log output](screenshots/01-seed-log.png)
+
+> **Need a clean slate?** Wipe the Postgres volume and start over:
+> ```bash
+> docker compose down -v && docker compose up --build
+> ```
+
+---
+
+## Tester walkthrough
+
+Each step lists the **action** to take and the **expected outcome**. If anything doesn't match the expected screenshot, something has gone wrong — please capture what you see and let me know. Open http://localhost:8080 in a fresh browser window before starting.
+
+### Step 1 — Open the app
+
+**Action:** navigate to **http://localhost:8080**.
+
+**Expected:** the login page with the *1Breadcrumb Library* heading, email + password fields, a **Sign in** button, and a *Don't have an account? Register* toggle.
+
+<!-- Screenshot: the login page on first load (sign-in mode, fields empty) -->
+![Login page](screenshots/02-login-page.png)
+
+### Step 2 — Sign in as the seeded test user
+
+**Action:** enter `test@bread.com` / `TestPass123` and click **Sign in**.
+
+**Expected:** you land on `/library`. The header shows *Test Crumb* (no `(admin)` suffix), and the table lists the three seeded books, all with a green **Available** badge and *Test Crumb (you)* in the Owner column. Because you own these books, the borrow icon for each row is disabled, but the edit and delete icons are enabled.
+
+<!-- Screenshot: library page after signing in as test user — three demo books, "Test Crumb (you)" in owner column -->
+![Library as test user](screenshots/03-library-as-test.png)
+
+### Step 3 — Add a new book
+
+**Action:** click the **+ Add Book** floating button at the bottom-right. In the modal, type a title (e.g. `1984`) and click **Add book**.
+
+**Expected:** the modal closes and the new title appears in the table as an additional row, owned by *Test Crumb (you)*, with a green **Available** badge. The total row count in the toolbar increases by one.
+
+<!-- Screenshot: the Add a book modal with "1984" typed in -->
+![Add Book modal](screenshots/04-add-book-modal.png)
+
+<!-- Screenshot: the library list with "1984" added (you can confirm the count increased) -->
+![Library with new book](screenshots/05-library-after-add.png)
+
+### Step 4 — Sign out and sign in as the admin
+
+**Action:** click **Sign out** in the header. On the login page, sign in as `admin@bread.com` / `AdminPass123`.
+
+**Expected:** you land on `/library` again, but now the header shows *Library Admin (admin)* **and** an **Activity log** link to the left of the name. The owner column for every book shows *Test Crumb* (without the *(you)* suffix, because admin doesn't own them) — and the borrow icon is now **enabled** on every row.
+
+<!-- Screenshot: library page header as admin, showing "Activity log" link and "Library Admin (admin)" -->
+![Library header as admin](screenshots/06-library-as-admin.png)
+
+### Step 5 — Borrow a book as admin
+
+**Action:** find *Clean Code* in the table and click the borrow icon (📥) on its row.
+
+**Expected:** the **Available** badge changes to a **Borrowed by you** badge on that row, and the icon flips to a return arrow (↩️). All other rows stay unchanged.
+
+<!-- Screenshot: Clean Code row showing "Borrowed by you" badge after borrowing -->
+![Book borrowed by admin](screenshots/07-book-borrowed.png)
+
+### Step 6 — Open the activity log
+
+**Action:** click **Activity log** in the header.
+
+**Expected:** you land on `/admin/activity`. There is at least one row, with action **Borrowed** (blue/orange badge), actor *Library Admin*, and book *Clean Code*. If you've followed every step, you'll also see a **Created** entry for the book added in Step 3 by *Test Crumb*.
+
+<!-- Screenshot: /admin/activity page showing the recent Borrowed event(s) -->
+![Activity log after borrow](screenshots/08-activity-log-after-borrow.png)
+
+### Step 7 — Return the book
+
+**Action:** click **Back to library**, find *Clean Code*, and click the return icon (↩️).
+
+**Expected:** the badge flips back to **Available**.
+
+<!-- Screenshot: Clean Code row showing "Available" badge again after returning -->
+![Book returned](screenshots/09-book-returned.png)
+
+### Step 8 — Confirm the return is logged
+
+**Action:** click **Activity log** again (or click the **Refresh** button if you're already there).
+
+**Expected:** a new **Returned** entry appears at the top of the table, with `details` reading *Returned from Library Admin*. The previous **Borrowed** entry is still present below it.
+
+<!-- Screenshot: activity log showing both Borrowed and Returned entries for Clean Code -->
+![Activity log after return](screenshots/10-activity-log-after-return.png)
+
+### Step 9 — Verify role gating
+
+**Action:** sign out, sign back in as the test user, then manually visit **http://localhost:8080/admin/activity**.
+
+**Expected:** you are redirected to `/library` immediately — non-admins cannot view the audit log. The **Activity log** link is also absent from the header.
+
+<!-- Screenshot (optional): library page after the redirect — useful as proof there is no Activity log link -->
+![Test user redirected away from admin](screenshots/11-non-admin-redirect.png)
+
+### Step 10 — (Optional) Verify the API directly
+
+If you'd like to exercise the contract without the UI, hit the API straight on (uses jq + curl):
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@bread.com","password":"AdminPass123"}' | jq -r .token)
+
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:5000/api/admin/activity | jq '.items[] | {action, actorName, bookTitle}'
+```
+
+You should see the same events you saw in the UI, in `application/json`.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+| ------- | --- |
+| `docker compose up` says **port already allocated** for 8080, 5000, or 5432 | Another process is using one of the ports. Either stop that process, or override the port in `.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`). |
+| Login fails with "Invalid email or password" using the seeded credentials | The volume probably has stale data from a previous run with different secrets. Run `docker compose down -v` then `docker compose up --build`. |
+| Backend container restarts in a loop | Run `docker compose logs backend`. The most common cause is `Jwt__SigningKey` shorter than 32 characters in `.env`. The default in `.env.example` is fine. |
+| `Activity log` link missing after signing in as admin | You probably signed in as the test user. Sign out and use `admin@bread.com` / `AdminPass123`. |
 
 ---
 
@@ -274,10 +411,3 @@ The `main` branch is protected to require the `e2e` job to pass before merge —
 
 ---
 
-## What I'd do next
-
-- Integration tests against a real Postgres via Testcontainers.
-- Frontend component / E2E tests (Vitest + Playwright).
-- A loan history table instead of a single nullable `BorrowerId`, so you can see who *has* borrowed a book over time.
-- Refresh tokens + httpOnly cookie storage to harden auth.
-- Optimistic UI updates on borrow / return.

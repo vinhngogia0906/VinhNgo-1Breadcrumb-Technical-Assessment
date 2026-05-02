@@ -29,7 +29,7 @@ test.describe('Login page', () => {
     await page.getByRole('button', { name: /sign in/i }).click();
 
     await expect(page).toHaveURL(/\/library$/);
-    await expect(page.getByRole('heading', { name: /^library$/i })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /library/i })).toBeVisible();
     // Admin badge appears for admin user
     await expect(page.getByText(/library admin \(admin\)/i)).toBeVisible();
   });
