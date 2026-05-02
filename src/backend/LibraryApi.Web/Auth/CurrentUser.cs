@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using LibraryApi.Domain.Common;
 
 namespace LibraryApi.Web.Auth;
 
@@ -15,8 +16,11 @@ public class CurrentUser : ICurrentUser
 
         if (Guid.TryParse(sub, out var id))
             Id = id;
+
+        IsAdmin = principal?.IsInRole(UserRoles.Admin) ?? false;
     }
 
     public Guid Id { get; }
     public bool IsAuthenticated { get; }
+    public bool IsAdmin { get; }
 }

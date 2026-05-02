@@ -33,6 +33,8 @@ tags:
     description: Account creation and login.
   - name: LibraryAPI
     description: Books in the lending library.
+  - name: Admin
+    description: Management endpoints, restricted to users with the `Admin` role.
   - name: Meta
     description: Operational endpoints.
 
@@ -305,6 +307,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /admin/activity:
+    get:
+      tags: [Admin]
+      summary: Get the global activity log
+      description: |
+        Paginated audit log of every book mutation: create, update, delete,
+        borrow, return. Newest first. Restricted to accounts with the `Admin`
+        role.
+      operationId: GetAdminActivity
+      security:
+        - Bearer: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedActivity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is authenticated but not an admin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /health:
     get:
       tags: [Meta]
@@ -472,7 +515,7 @@ components:
     AuthUser:
       type: object
       additionalProperties: false
-      required: [id, email, displayName]
+      required: [id, email, displayName, role]
       properties:
         id:
           type: string
@@ -482,6 +525,75 @@ components:
           format: email
         displayName:
           type: string
+        role:
+          $ref: '#/components/schemas/UserRole'
+
+    UserRole:
+      type: string
+      description: Authorization role.
+      enum: [User, Admin]
+      default: User
+
+    BookAction:
+      type: string
+      description: The kind of action recorded in the activity log.
+      enum: [Created, Updated, Deleted, Borrowed, Returned]
+
+    BookActivity:
+      type: object
+      description: |
+        One entry in the audit log. `bookId`, `bookTitle`, and `actorName` are
+        snapshotted at write time so deleting a book or renaming a user does
+        not corrupt the historical record.
+      additionalProperties: false
+      required:
+        - id
+        - bookId
+        - bookTitle
+        - actorId
+        - actorName
+        - action
+        - occurredAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        bookId:
+          type: string
+          format: uuid
+        bookTitle:
+          type: string
+        actorId:
+          type: string
+          format: uuid
+        actorName:
+          type: string
+        action:
+          $ref: '#/components/schemas/BookAction'
+        details:
+          type: string
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+
+    PagedActivity:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookActivity'
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalCount:
+          type: integer
+        totalPages:
+          type: integer
 
     AuthResponse:
       type: object

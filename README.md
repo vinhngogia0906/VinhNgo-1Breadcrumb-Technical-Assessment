@@ -109,10 +109,20 @@ Vite dev server runs on `http://localhost:5173` and proxies `/api/*` to the back
 
 ## Using the app
 
-1. Register a new account on `/login` (toggle to "Register").
-2. You'll land on `/library`. Add a book via the floating **+ Add Book** button.
+On first boot the API seeds two accounts (idempotent — run again, no duplicates):
+
+| Email             | Password       | Role  | Notes                                              |
+| ----------------- | -------------- | ----- | -------------------------------------------------- |
+| `admin@bread.com` | `AdminPass123` | Admin | Sees the global activity log at `/admin/activity`. |
+| `test@bread.com`  | `TestPass123`  | User  | Owns three demo books out of the box.              |
+
+You can also register fresh accounts at `/login` — toggle to "Register".
+
+1. Sign in. Regular users land on `/library`; admins land there too and see an extra **Activity log** link in the header.
+2. Add a book via the floating **+ Add Book** button. The authenticated user becomes the owner.
 3. Other users can search, filter (Available / Unavailable), and borrow your books.
 4. The borrower (or the owner) can return the book; only the owner can edit or delete.
+5. Admins can review every create / update / delete / borrow / return event at `/admin/activity`.
 
 ---
 
@@ -139,6 +149,7 @@ All `/api/book*` endpoints require `Authorization: Bearer <token>`.
 | DELETE | `/api/book/{id}`              | Delete (owner only)                |
 | POST   | `/api/book/{id}/borrow`       | Borrow if available (not owner)    |
 | POST   | `/api/book/{id}/return`       | Return (borrower or owner)         |
+| GET    | `/api/admin/activity`         | Paginated audit log (Admin role)   |
 | GET    | `/openapi/v1.yaml`            | OpenAPI 3.0 contract               |
 | GET    | `/health`                     | Liveness probe                     |
 
@@ -183,10 +194,13 @@ These rules live in the service so they're enforced regardless of which controll
 
 **Persistence.** PostgreSQL via Npgsql + EF Core 10. The schema is defined in `LibraryDbContext`:
 
-- `users`: unique index on `email`.
+- `users`: unique index on `email`. `Role` is a string column (`User` / `Admin`).
 - `books`: indexes on `title` (for search) and `borrower_id`. The owner FK uses `Restrict` (you can't delete a user who owns books); the borrower FK uses `SetNull` (returns the book if the borrower account is removed).
+- `book_activities`: append-only audit log indexed by `OccurredAt`, `BookId`, and `ActorId`. `BookId` and `ActorId` are intentionally **not** foreign keys — book deletions and user renames must not corrupt the historical record. Title and actor name are snapshotted at write time.
 
-Migrations are applied at startup with retry — the backend container waits for Postgres to become reachable.
+Migrations are applied at startup with retry — the backend container waits for Postgres to become reachable. After migrations the `DataSeeder` idempotently inserts the demo accounts and a few sample books.
+
+**Activity logging.** `BookService` records a `BookActivity` row for every mutation (create, update, delete, borrow, return). Admins read the log via `GET /api/admin/activity`. The `AdminController` is gated with `[Authorize(Roles = "Admin")]`; the role flows through the JWT `role` claim emitted by `JwtTokenGenerator`.
 
 **Search.** Title search uses `ILIKE` for case-insensitive matching, sorted by title for stable pagination.
 

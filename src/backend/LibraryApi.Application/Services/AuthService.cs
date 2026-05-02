@@ -55,6 +55,6 @@ public class AuthService : IAuthService
         return new AuthResponseDto(
             token.Token,
             token.ExpiresAt,
-            new AuthUserDto(user.Id, user.Email, user.DisplayName));
+            new AuthUserDto(user.Id, user.Email, user.DisplayName, user.Role));
     }
 }

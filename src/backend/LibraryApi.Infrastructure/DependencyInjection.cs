@@ -19,6 +19,8 @@ public static class DependencyInjection
 
         services.AddScoped<IBookRepository, BookRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IBookActivityRepository, BookActivityRepository>();
+        services.AddScoped<IDataSeeder, DataSeeder>();
 
         return services;
     }

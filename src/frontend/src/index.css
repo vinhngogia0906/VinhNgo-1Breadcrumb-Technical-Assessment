@@ -252,6 +252,25 @@ select:focus {
   color: #8a5300;
 }
 
+.badge-action-created   { background: #e3f2fd; color: #0d47a1; }
+.badge-action-updated   { background: #ede7f6; color: #4527a0; }
+.badge-action-deleted   { background: #fdecea; color: var(--danger); }
+.badge-action-borrowed  { background: #fff4e5; color: #8a5300; }
+.badge-action-returned  { background: #e6f4ea; color: var(--success); }
+
+.header-link {
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.7rem;
+  background: var(--surface);
+}
+
+.header-link:hover {
+  background: #f0ebe1;
+}
+
 .empty-state {
   padding: 2rem;
   text-align: center;
