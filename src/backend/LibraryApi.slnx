@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="LibraryApi.Application/LibraryApi.Application.csproj" />
+  <Project Path="LibraryApi.Domain/LibraryApi.Domain.csproj" />
+  <Project Path="LibraryApi.Infrastructure/LibraryApi.Infrastructure.csproj" />
+  <Project Path="LibraryApi.Tests/LibraryApi.Tests.csproj" />
+  <Project Path="LibraryApi.Web/LibraryApi.Web.csproj" />
+</Solution>

@@ -1,0 +1,8 @@
+**/bin
+**/obj
+**/.vs
+**/*.user
+**/.idea
+**/Properties/launchSettings.json
+**/Dockerfile*
+**/.dockerignore

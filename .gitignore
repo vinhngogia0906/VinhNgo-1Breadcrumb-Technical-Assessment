@@ -1,0 +1,25 @@
+# Environment
+.env
+.env.local
+
+# Backend (.NET)
+**/bin/
+**/obj/
+**/.vs/
+*.user
+.idea/
+
+# Frontend (Node)
+node_modules/
+dist/
+.vite/
+*.local
+
+# Editor/tooling
+.claude/
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
