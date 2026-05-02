@@ -1,0 +1,517 @@
+openapi: 3.0.3
+info:
+  title: 1Breadcrumb Library API
+  description: |
+    Crumb-to-Crumb book lending library API.
+
+    The path conventions and `Book` / `BookWithId` schema split mirror the
+    reference spec at https://libapi.1breadcrumb.com/. That spec is incomplete
+    for the discovery problem we're solving, so this contract extends it with:
+
+    - **Authentication** (JWT bearer instead of an `X-Api-Token` API key) so we
+      can attribute books to a specific Crumb.
+    - **Owner / borrower / availability** fields on `BookWithId`.
+    - **DELETE**, **borrow**, and **return** operations.
+    - **Search, availability filter, and pagination** query parameters on the
+      list endpoint.
+
+    All `/book*` endpoints require a valid bearer token. `/auth/*` and
+    `/health` are anonymous.
+  version: v1
+  contact:
+    name: 1Breadcrumb Library
+    url: https://1breadcrumb.com
+
+servers:
+  - url: /api
+    description: Library API root (mounted under /api when proxied through the frontend)
+  - url: http://localhost:5000/api
+    description: Local backend (docker compose default)
+
+tags:
+  - name: Auth
+    description: Account creation and login.
+  - name: LibraryAPI
+    description: Books in the lending library.
+  - name: Meta
+    description: Operational endpoints.
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new account
+      description: Creates a new Crumb account and returns a JWT bearer token.
+      operationId: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in
+      description: Exchanges email + password for a JWT bearer token.
+      operationId: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /books:
+    get:
+      tags: [LibraryAPI]
+      summary: Get all books
+      description: |
+        Retrieve a paginated list of books in the library. Supports a free-text
+        search on book title and an availability filter.
+      operationId: GetBooks
+      security:
+        - Bearer: []
+      parameters:
+        - name: search
+          in: query
+          description: Case-insensitive substring match on book title.
+          required: false
+          schema:
+            type: string
+        - name: availability
+          in: query
+          description: Filter on whether the book is currently borrowed.
+          required: false
+          schema:
+            $ref: '#/components/schemas/AvailabilityFilter'
+        - name: page
+          in: query
+          description: 1-based page number.
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: Items per page (1-100).
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 10
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedBooks'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /book:
+    post:
+      tags: [LibraryAPI]
+      summary: Add a new book
+      description: Adds a new book. The authenticated user becomes the owner.
+      operationId: PostBook
+      security:
+        - Bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWithId'
+          headers:
+            Location:
+              description: URL of the created resource.
+              schema:
+                type: string
+                format: uri
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /book/{id}:
+    parameters:
+      - $ref: '#/components/parameters/BookId'
+    get:
+      tags: [LibraryAPI]
+      summary: Get a specific book
+      description: Retrieve a specific book by its ID.
+      operationId: GetBook
+      security:
+        - Bearer: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWithId'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [LibraryAPI]
+      summary: Update a book
+      description: Update an existing book by its ID. Owner only.
+      operationId: PutBook
+      security:
+        - Bearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWithId'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [LibraryAPI]
+      summary: Delete a book
+      description: Permanently remove a book from the library. Owner only.
+      operationId: DeleteBook
+      security:
+        - Bearer: []
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /book/{id}/borrow:
+    parameters:
+      - $ref: '#/components/parameters/BookId'
+    post:
+      tags: [LibraryAPI]
+      summary: Borrow a book
+      description: |
+        Marks the book as borrowed by the authenticated user. Fails if the
+        caller already owns the book, or if it's already borrowed by anyone.
+      operationId: BorrowBook
+      security:
+        - Bearer: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWithId'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Book is already borrowed, or the caller is the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /book/{id}/return:
+    parameters:
+      - $ref: '#/components/parameters/BookId'
+    post:
+      tags: [LibraryAPI]
+      summary: Return a book
+      description: |
+        Clears the borrower on the book. Either the borrower or the owner may
+        call this. Fails if the book is not currently borrowed.
+      operationId: ReturnBook
+      security:
+        - Bearer: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookWithId'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Caller is neither the borrower nor the owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Book is not currently borrowed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      tags: [Meta]
+      summary: Health check
+      description: Liveness probe used by orchestrators.
+      operationId: Health
+      security: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+components:
+  parameters:
+    BookId:
+      name: id
+      in: path
+      required: true
+      description: The book identifier (UUID).
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid bearer token.
+    Forbidden:
+      description: Caller is authenticated but lacks permission for this action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Book:
+      type: object
+      description: Book payload accepted by create / update.
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: Atomic Habits
+
+    BookWithId:
+      type: object
+      description: |
+        A book as returned by the server. Carries identity, ownership, and the
+        current borrower (if any). `isAvailable` is `true` when `borrowerId` is
+        null; servers MUST keep the two fields consistent.
+      additionalProperties: false
+      required:
+        - id
+        - title
+        - ownerId
+        - ownerName
+        - isAvailable
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        ownerId:
+          type: string
+          format: uuid
+        ownerName:
+          type: string
+        borrowerId:
+          type: string
+          format: uuid
+          nullable: true
+        borrowerName:
+          type: string
+          nullable: true
+        isAvailable:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PagedBooks:
+      type: object
+      description: A page of books with pagination metadata.
+      additionalProperties: false
+      required: [items, page, pageSize, totalCount, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookWithId'
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        totalCount:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    AvailabilityFilter:
+      type: string
+      enum: [All, Available, Unavailable]
+      default: All
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, displayName, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    AuthUser:
+      type: object
+      additionalProperties: false
+      required: [id, email, displayName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        displayName:
+          type: string
+
+    AuthResponse:
+      type: object
+      additionalProperties: false
+      required: [token, expiresAt, user]
+      properties:
+        token:
+          type: string
+          description: JWT bearer token. Send as `Authorization: Bearer <token>`.
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/AuthUser'
+
+    Error:
+      type: object
+      description: Uniform error envelope.
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: Only the owner can delete this book.
+
+  securitySchemes:
+    Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT issued by `/auth/login` or `/auth/register`. Send as
+        `Authorization: Bearer <token>`.

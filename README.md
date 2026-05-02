@@ -118,19 +118,29 @@ Vite dev server runs on `http://localhost:5173` and proxies `/api/*` to the back
 
 ## API summary
 
-All `/api/books*` endpoints require `Authorization: Bearer <token>`.
+The canonical contract lives at `src/backend/LibraryApi.Web/OpenApi/library-api.yaml` and is served by the running API at:
 
-| Method | Path                           | Description                        |
-| ------ | ------------------------------ | ---------------------------------- |
-| POST   | `/api/auth/register`           | Create an account, returns JWT     |
-| POST   | `/api/auth/login`              | Log in, returns JWT                |
-| GET    | `/api/books`                   | Paged list. Query: `search`, `availability` (`All`/`Available`/`Unavailable`), `page`, `pageSize` |
-| GET    | `/api/books/{id}`              | Single book                        |
-| POST   | `/api/books`                   | Create — caller becomes the owner  |
-| PUT    | `/api/books/{id}`              | Update title (owner only)          |
-| DELETE | `/api/books/{id}`              | Delete (owner only)                |
-| POST   | `/api/books/{id}/borrow`       | Borrow if available (not owner)    |
-| POST   | `/api/books/{id}/return`       | Return (borrower or owner)         |
+```
+GET /openapi/v1.yaml
+```
+
+The path conventions (`/books` for the collection, `/book` and `/book/{id}` for individual operations) and the `Book` / `BookWithId` schema split mirror the reference spec at https://libapi.1breadcrumb.com/. Extensions over that spec — auth, owner / borrower fields, DELETE, borrow / return, search & pagination — are documented inline.
+
+All `/api/book*` endpoints require `Authorization: Bearer <token>`.
+
+| Method | Path                          | Description                        |
+| ------ | ----------------------------- | ---------------------------------- |
+| POST   | `/api/auth/register`          | Create an account, returns JWT     |
+| POST   | `/api/auth/login`             | Log in, returns JWT                |
+| GET    | `/api/books`                  | Paged list. Query: `search`, `availability` (`All`/`Available`/`Unavailable`), `page`, `pageSize` |
+| POST   | `/api/book`                   | Create — caller becomes the owner  |
+| GET    | `/api/book/{id}`              | Single book                        |
+| PUT    | `/api/book/{id}`              | Update title (owner only)          |
+| DELETE | `/api/book/{id}`              | Delete (owner only)                |
+| POST   | `/api/book/{id}/borrow`       | Borrow if available (not owner)    |
+| POST   | `/api/book/{id}/return`       | Return (borrower or owner)         |
+| GET    | `/openapi/v1.yaml`            | OpenAPI 3.0 contract               |
+| GET    | `/health`                     | Liveness probe                     |
 
 ---
 

@@ -78,6 +78,9 @@ await using (var scope = app.Services.CreateAsyncScope())
     }
 }
 
+// Auto-generated OpenAPI document (reflection-derived) is exposed in
+// development for convenience. The hand-authored contract at
+// /openapi/v1.yaml is the canonical spec.
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -89,7 +92,18 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+
+// Serve the canonical OpenAPI contract. The file is shipped alongside the
+// binary via <Content Include="OpenApi\**"/> in the csproj.
+app.MapGet("/openapi/v1.yaml", (IWebHostEnvironment env) =>
+{
+    var path = Path.Combine(env.ContentRootPath, "OpenApi", "library-api.yaml");
+    return File.Exists(path)
+        ? Results.File(path, contentType: "application/yaml")
+        : Results.NotFound();
+}).AllowAnonymous();
 
 app.Run();
 
